@@ -88,7 +88,7 @@ uv run --directory slides jupyter lab
 - `week12_new/week12_class.ipynb`
 
 ### 6. 一步完成最终构建
-当你已经在 notebook 里完成修改，想要收口成 `.py + slides.html + notes.md` 时：
+当你已经在 notebook 里完成修改，想要收构建 `.py + slides.html + notes.md` 时：
 
 ```bash
 uv run --directory slides python -m slide_builder build week13/week13_class.ipynb

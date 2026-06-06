@@ -41,7 +41,11 @@
 #
 # - 变量很多；
 # - 变量彼此相关；
-# - 很多列其实在重复表达少数几个底层信号。
+# - 我们掌握的信息，不足以对每一列都做出稳定而准确的估计。
+#
+# 这背后的原因通常有两类：
+# - 要么是 `p > n`，每一列平均分到的信息太少；
+# - 要么是共线性太强，几列变量在争夺同一份解释权。
 #
 # 这时，问题不一定是“删掉谁”，也可能是：
 #
@@ -433,6 +437,16 @@ def summarize_comparison(metric_df, coef_df):
 # 2. 训练误差会越来越漂亮，但泛化未必跟着更好。
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
+# 先看一个极端例子：
+#
+# - 一元回归里，如果训练集只有 `n = 1` 个点；
+# - 我们总能找到一条直线，把这个点“拟合得完美无缺”；
+# - 于是训练误差一定是 0。
+#
+# 但这并不说明模型学到了规律。
+# 它只说明：**约束太少时，模型可以轻易把训练集讲圆。**
+
+# %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # **本幕主图**：随着 `p` 上升，`OLS` 的 train/test 误差与矩阵秩变化
 #
 # 这张图要回答：
@@ -441,7 +455,7 @@ def summarize_comparison(metric_df, coef_df):
 # %% slideshow={"slide_type": "skip"} tags=["skip"]
 dimension_df = evaluate_dimension_blowup()
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
 
 axes[0].plot(dimension_df["p"], dimension_df["train_rmse"], marker="o", label="train RMSE")
@@ -468,7 +482,7 @@ for _, row in dimension_df.iterrows():
         ha="center",
         fontsize=9,
     )
-axes[1].set_title("训练设计矩阵的有效秩会卡在样本数附近")
+axes[1].set_title(f"rank 的上限是 min(n_train, p)；这里 n_train = {dimension_df['n_train'].iloc[0]}")
 axes[1].set_xlabel("number of features p")
 axes[1].set_ylabel("rank of standardized X_train")
 
@@ -476,7 +490,7 @@ fig.suptitle("`p > n` 时，OLS 往往更像是在记住训练样本，而不是
 plt.tight_layout()
 plt.show()
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 dimension_df
 
 # %% [markdown] slideshow={"slide_type": "fragment"} tags=["fragment"]
@@ -485,6 +499,18 @@ dimension_df
 # - `p > n` 时，`OLS` 不一定报错，但自由度会非常大；
 # - 训练误差接近 0，不代表模型已经“学得很好”；
 # - 问题的核心不是能不能拟合，而是拟合是否稳定、是否可泛化。
+
+# %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
+# **这里顺手补两个词**
+#
+# - `condition number`：最大奇异值与最小奇异值之比
+#   $$
+#   \kappa(X) = \frac{\sigma_{\max}(X)}{\sigma_{\min}(X)}
+#   $$
+#   它越大，说明设计矩阵越接近“某些方向上快要塌掉”。
+# - `自由度`：这里可以先直观理解成“模型可以独立摆动的方向数”。
+#
+# 当 `p` 上升、而样本量没跟上时，可摆动的方向越来越多，但每个方向获得的证据越来越少。
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # **把直观和严格定义对应起来**
@@ -499,6 +525,10 @@ dimension_df
 #
 # - 不可逆；
 # - 或者虽然可逆，但病态得非常严重。
+#
+# 同时还要记住一个简单关系：
+# - $rank(X^\top X) = rank(X)$；
+# - 所以一旦 $rank(X) < p$，$X^\top X$ 就不可能满秩。
 #
 # 这时图里看到的“训练误差很低、但模型不稳”，就对应着：
 # 系数解不唯一，或者对样本扰动极度敏感。
@@ -526,6 +556,16 @@ dimension_df
 # 2. 在不同样本切分下，反复改变谁来“扛主力”。
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
+# 回忆一下上周的 `Ridge`：
+#
+# - 它不是把某一列直接删掉；
+# - 而是通过 `L2 penalty` 让几列相关变量更倾向于**平滑地共享功劳**；
+# - 所以在“谁该留下”之外，`Ridge` 更关心“怎样让估计更稳定”。
+#
+# 这一幕可以把 `OLS` 和 `Ridge` 的气质先区分开：
+# `OLS` 更容易在相关变量之间剧烈摇摆，`Ridge` 更愿意保守地平均分担。
+
+# %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # **本幕主图**：弱相关 vs 强相关 场景下，`OLS` 系数跨切分波动对比
 #
 # 这张图要回答：
@@ -537,7 +577,7 @@ X_strong, y_strong = make_collinearity_demo(strength="strong")
 coef_weak_df, weak_cond = repeated_ols_coefficients(X_weak, y_weak)
 coef_strong_df, strong_cond = repeated_ols_coefficients(X_strong, y_strong)
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, axes = plt.subplots(1, 2, figsize=(14, 5.5), sharey=True)
 focus_features = ["x1", "x2", "x3", "x4"]
 
@@ -569,7 +609,7 @@ plt.show()
 # 这里，大家需要理解的是：
 #
 # - 多重共线性会放大系数方差，让“谁更重要”这件事变得摇摆；
-# - 高维和共线性常常是同一类麻烦的两面：变量一多，重复信息就更容易出现。
+# - 高维和共线性不是同一个原因，但它们常常同时出现，并共同削弱原变量空间里的稳定估计。
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # **把直观和严格定义对应起来**
@@ -624,7 +664,7 @@ pca_2d.fit(cloud_scaled)
 pc_vectors = pca_2d.components_
 pc_scales = np.sqrt(pca_2d.explained_variance_) * 2.6
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, ax = plt.subplots(figsize=(8.5, 7))
 ax.scatter(cloud_scaled[:, 0], cloud_scaled[:, 1], alpha=0.35, color="#2563eb", s=26)
 origin = np.array([0.0, 0.0])
@@ -647,10 +687,23 @@ plt.show()
 # 它做的不是“删掉某一列”，而是把原始变量投影到一组新的正交方向上。
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
+# **先把算法步骤说清楚**
+#
+# 一个最朴素的 `PCA` 过程可以写成：
+#
+# 1. 先标准化各列变量；
+# 2. 计算协方差结构；
+# 3. 找到投影方差最大的方向作为 `PC1`；
+# 4. 在与 `PC1` 正交的约束下，继续找 `PC2`、`PC3`；
+# 5. 用前几个主成分来近似原来的高维数据。
+#
+# 所以 `PCA` 不是“随便取平均”，而是在系统地寻找最能保留变化的方向。
+
+# %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # **本幕辅图**：高维低秩数据中的累计解释方差
 #
 # 这张图要把二维直觉迁移到高维：
-# > 如果前几个主成分已经解释了大部分方差，就说明很多列本质上在重复表达少数潜在因子。
+# > 如果前几个主成分已经解释了大部分方差，就说明原数据虽然住在高维空间里，但主要变化其实贴近一个更低维的平面或子空间。
 
 # %% slideshow={"slide_type": "skip"} tags=["skip"]
 X_latent, _ = make_high_dimensional_data(
@@ -665,7 +718,7 @@ X_latent_scaled = StandardScaler().fit_transform(X_latent)
 pca_full = PCA().fit(X_latent_scaled)
 cum_var = np.cumsum(pca_full.explained_variance_ratio_)
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, ax = plt.subplots(figsize=(10, 5.5))
 ax.plot(np.arange(1, 21), cum_var[:20], marker="o", color="#7c3aed")
 ax.axhline(0.8, color="#64748b", linestyle="--", linewidth=1.5)
@@ -737,7 +790,7 @@ plt.show()
 # %% slideshow={"slide_type": "skip"} tags=["skip"]
 pcr_results_df, pcr_cv_df, best_k, ols_train_rmse, ols_test_rmse = pcr_curve_data()
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, ax = plt.subplots(figsize=(10.5, 6))
 ax.plot(
     pcr_results_df["n_components"],
@@ -778,6 +831,17 @@ plt.show()
 # - `OLS` 在原始高维空间里可以把训练误差压得很低；
 # - `PCR` 用少量主成分就能抓住主要结构，测试误差反而更稳；
 # - 成分太多时，后面的方向也会把噪声重新带回来。
+
+# %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
+# **怎么读 `PCR CV RMSE` 这条线？**
+#
+# - 它是交叉验证下的平均测试误差，用来估计“如果换一批新样本，模型大概会表现怎样”；
+# - 它不像 train RMSE 那样容易被“贴着训练集讲故事”迷惑；
+# - 它和 test RMSE 的趋势接近，说明 `PCR` 的优劣主要确实取决于保留多少个主成分。
+#
+# 这张图里 `OLS` 的 train error 很低，甚至接近 0，并不是因为它更聪明，
+# 而是因为原始高维空间给了它过多自由度。
+# `CV` 在这里的主要作用，就是帮我们选择更合适的主成分个数 `k`。
 
 # %% [markdown] slideshow={"slide_type": "fragment"} tags=["fragment"]
 # 这里，大家需要记住的是：
@@ -820,7 +884,7 @@ plt.show()
 #
 # 真正要问的不是“谁更高级”，而是：
 #
-# > 数据的真实结构更像“少数变量真的有用”，还是“很多变量都在表达少数潜在因子”？
+# > 数据的真实结构更像“少数原始变量直接有效”，还是“原始变量主要是由少数潜在因子的线性组合生成出来的”？
 
 # %% [markdown] slideshow={"slide_type": "subslide"} tags=["sub-slide"]
 # 先做一个方法下注：
@@ -835,7 +899,7 @@ plt.show()
 # 我们直接造两个世界：
 #
 # 1. `Sparse truth`：只有少数原始变量真正有用；
-# 2. `Latent-factor truth`：很多变量都在表达少数潜在因子。
+# 2. `Latent-factor truth`：原始变量主要由少数潜在因子线性组合生成。
 
 # %% slideshow={"slide_type": "skip"} tags=["skip"]
 latent_metric_df, latent_coef_df = compare_lasso_and_pcr(
@@ -850,7 +914,7 @@ comparison_metric_df = pd.concat([latent_metric_df, sparse_metric_df], ignore_in
 comparison_coef_df = pd.concat([latent_coef_df, sparse_coef_df], ignore_index=True)
 comparison_summary_df = summarize_comparison(comparison_metric_df, comparison_coef_df)
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 fig, axes = plt.subplots(1, 2, figsize=(14, 5.5), sharey=True)
 scenario_order = ["Sparse truth", "Latent-factor truth"]
 for ax, scenario in zip(axes, scenario_order):
@@ -879,7 +943,7 @@ fig.suptitle("方法优劣会随“真实结构”改变：selection 和 compres
 plt.tight_layout()
 plt.show()
 
-# %% tags=["hide-input"] slideshow={"slide_type": "subslide"}
+# %% slideshow={"slide_type": "subslide"} tags=["hide-input"]
 comparison_summary_df.round(
     {
         "mean_test_rmse": 3,
@@ -893,9 +957,10 @@ comparison_summary_df.round(
 # 这张表里最值得读的，不只是预测误差，还有两个维度：
 #
 # - `avg_model_size`
-#   - `Lasso` 更像变量名单；
-#   - `PCR` 更像保留多少个主成分。
+#   - 对 `Lasso`，它表示平均留下了多少个非零系数；
+#   - 对 `PCR`，它表示平均保留了多少个主成分。
 # - `coef_instability`
+#   - 它这里定义为：先对每个系数看“跨切分的标准差”，再对所有系数取平均；
 #   - 数值越大，说明同一方法在不同切分下给出的系数更容易波动。
 
 # %% [markdown] slideshow={"slide_type": "fragment"} tags=["fragment"]
@@ -918,7 +983,7 @@ comparison_summary_df.round(
 #
 # > 当原变量空间已经拥挤、重复、摇摆时，我们该在原空间里筛选，还是先换坐标、再回归？
 #
-# 到这里，学生应该至少带走 5 个判断：
+# 到这里，大家需要记住 5 个判断：
 #
 # 1. `p > n` 会让 `OLS` 更容易把训练集讲圆，却更难保证泛化；
 # 2. 共线性会让系数解释摇摆，哪怕预测误差还没立刻爆炸；
@@ -929,14 +994,14 @@ comparison_summary_df.round(
 # %% [markdown] slideshow={"slide_type": "slide"} tags=["slide"]
 # ## Transition
 #
-# 今天我们默认 `PCA` 先只看 `X` 的方差结构。
+# 今天我们一直在默认：先把 `y` 当作旁观者，只根据 `X` 的结构来整理特征空间。
 #
 # 但一个自然问题是：
 #
 # > 如果某个方差很大的方向，其实和 `y` 没那么相关，怎么办？
 #
-# 这就把我们带向下一步：
+# 这就把我们带向下一个更大的主题：
 #
-# > 能不能在降维时，把 `y` 也一起考虑进去？
+# > 当响应变量不再只是连续数值，而是类别标签时，我们该怎样直接建模 $P(y \mid X)$？
 #
-# 这会自然引向监督式降维，例如 `PLS`。
+# 这会把我们带到下一周：`广义线性模型（GLM）核心：逻辑回归`。
